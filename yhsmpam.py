@@ -219,6 +219,7 @@ class CommandProcessor(object):
             self._hsm = YHSMPAM(key_handle=self._key_handle,
                                 device=self._device,
                                 datastore=self._datastore)
+        return self._hsm
 
     def _UnknownCommand(self, cmd, *args):
         """Callback function for unknown commansd."""
