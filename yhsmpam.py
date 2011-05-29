@@ -10,16 +10,13 @@ __author__ = 'Thomas Habets <habets@google.com>'
 
 import pyhsm
 import sys
-import spwd
-import subprocess
 import getpass
-import os
 import re
 
 DEFAULT_KEY_HANDLE = 2
 DEFAULT_MIN_LENGTH = 20
-DEFAULT_DEVICE='/dev/ttyACM0'
-DEFAULT_DATASTORE='/etc/yhsmpam/users/%(username)s'
+DEFAULT_DEVICE = '/dev/ttyACM0'
+DEFAULT_DATASTORE = '/etc/yhsmpam/users/%(username)s'
 
 #
 # Exception classes 
@@ -27,27 +24,19 @@ DEFAULT_DATASTORE='/etc/yhsmpam/users/%(username)s'
 
 
 class Error(Exception):
-    pass
+    """Top level exception for this module."""
 
 
 class UseError(Error):
-    pass
+    """Something wrong with the input."""
 
     
 class CheckError(Error):
-    pass
-
-
-class CheckDatabaseError(CheckError):
-    pass
+    """Error while checking password."""
 
 
 class CheckMismatchError(CheckError):
-    pass
-
-
-class SetDatabaseError(Error):
-    pass
+    """Wrong password."""
 
 
 #
@@ -86,10 +75,14 @@ class YHSMPAM(object):
 
         try:
             self.hsm = pyhsm.YHSM(self.device)
-        except Exception, e:
-            raise Error('pyhsm: ' + str(e))
+        except Exception, exc:
+            raise Error('pyhsm: ' + str(exc))
 
     def GetUserDatastore(self, user):
+        """GetUserDatastore(self, user) -> str
+
+        Get the full path of the users datastore. Securely.
+        """
         user = user.lower()
         if not user.isalnum():
             raise UseError('Username must be alphanumeric')
@@ -103,9 +96,9 @@ class YHSMPAM(object):
         Get user AEAD block and nonce from /etc/shadow, check that
         it's formatted properly and send to HSM.
         """
-        f = open(self.GetUserDatastore(user))
-        nonce, aead = re.split(r"\s+", f.readline().strip(), 1)
-        f.close()
+        fdata = open(self.GetUserDatastore(user))
+        nonce, aead = re.split(r"\s+", fdata.readline().strip(), 1)
+        fdata.close()
 
         if not self.hsm.validate_aead(nonce.decode('hex'),
                                       self.key_handle,
@@ -115,17 +108,22 @@ class YHSMPAM(object):
             raise CheckMismatchError("Wrong password according to HSM")
 
     def SetPassword(self, user, password):
+        """SetPassword(self, user, password) -> None
+
+        Set user password.
+        """
         nonce = self.hsm.get_nonce().nonce
         aead = self.hsm.generate_aead_simple(nonce,
                                              self.key_handle,
                                              password.ljust(self.min_length,
                                                             chr(0x0)))
             
-        f = open(self.GetUserDatastore(user), 'w')
-        f.write("%s %s\n" % (nonce.encode('hex'), aead.data.encode('hex')))
-        f.close()
+        fdata = open(self.GetUserDatastore(user), 'w')
+        fdata.write("%s %s\n" % (nonce.encode('hex'), aead.data.encode('hex')))
+        fdata.close()
 
     def SysInfo(self):
+        """Get YubiHSM version info."""
         return self.hsm.info()
 
 
@@ -133,7 +131,8 @@ class CommandProcessor(object):
     """YubiHSM PAM password command line tool.
 
     Meant to be run as the main program, but can also be used as a
-    library.
+    library. Unless you call Main() it will not write to stdout/stderr or
+    exit().
 
     Command line use:
       CommandProcessor.Main(sys.argv)
@@ -152,6 +151,7 @@ class CommandProcessor(object):
         self._device = None
         self._ReadConfig()
         self._hsm = None
+        self._datastore = None
 
         for cmd in [attr for attr in dir(self)
                     if attr.islower()
@@ -160,51 +160,70 @@ class CommandProcessor(object):
 
     @classmethod
     def Main(cls, argv):
+        """Main(cls, argv) -> int
+
+        main() that should be reusable. Prints to stdout and stderr when
+        it feels it's approriate.
+        """
         cls.argv0 = argv[0]
         cmd = CommandProcessor()
         try:
             ret = cmd.RunCommand(argv[1], argv[2:])
             if ret:
                 print ret
-        except UseError, e:
-            print e
+            return 0
+        except UseError, exc:
+            print exc
             cmd.help('help')
-            return 1
-        except Error, e:
-            print >>sys.stderr, "Exception:", type(e)
-            if e.args:
-                print >>sys.stderr, "Message:  ", e
-            return 1
+        except Error, exc:
+            print >> sys.stderr, "Exception:", type(exc)
+            if exc.args:
+                print >> sys.stderr, "Message:  ", exc
+        return 1
 
     def _ReadConfig(self):
         self._config = dict([tuple(re.split(r"\s+", line.strip(), 1))
                                    for line in open(self._configfile)])
-        for key,val in self._config.iteritems():
+        for key, val in self._config.iteritems():
             if key in ('key_handle'):
                 self.__setattr__('_' + key, int(val))
             elif key in ('device', 'datastore'):
                 self.__setattr__('_' + key, val)
 
     def RunCommand(self, cmd, args):
+        """RunCommand(self, cmd, args) -> str"""
         return self._commands.get(cmd.lower(), self._UnknownCommand)(cmd,
                                                                      *args)
 
-    def _InitHSM(self):
+    def _GetHSM(self):
+        """_GetHSM(self) -> hsm
+
+        Init hsm if needed and return it.
+        """
         if self._hsm is None:
             self._hsm = YHSMPAM(key_handle=self._key_handle,
                                 device=self._device,
                                 datastore=self._datastore)
 
     def _UnknownCommand(self, cmd, *args):
+        """Callback function for unknown commansd."""
         raise UseError("Unknown command: %s" % cmd)
 
     def _AboutCommand(self, cmd):
+        """_AboutCommand(self, cmd): -> str
+
+        Show detailed help about command.
+        """
         try:
             return ' ' * 8 + self.__getattribute__(cmd.lower()).__doc__
         except AttributeError:
             return "Unknown command: %s" % cmd
 
     def _Usage(self):
+        """_Usage(self) -> str
+
+        Return normal usage info.
+        """
         usagetext = '''Usage: %s [ <command> ] [ <options> ]
 
   If no command is given, the script will use PAM mode.
@@ -241,10 +260,9 @@ class CommandProcessor(object):
            User password: <secret>
            $
         """
-        self._InitHSM()
         if password is None:
             password = getpass.getpass('User password: ')
-        return self._hsm.SetPassword(username, password)
+        return self._GetHSM().SetPassword(username, password)
 
     def check(self, cmd, username, password=None):
         """check <username> [<password>]        Check user password.
@@ -253,10 +271,9 @@ class CommandProcessor(object):
             $ sudo yhsmpam set marvin
             User password: <secret>
         """
-        self._InitHSM()
         if password is None:
             password = getpass.getpass('User password: ')
-        self._hsm.CheckPassword(username, password)
+        self._GetHSM().CheckPassword(username, password)
         return "Password correct"
 
     def sysinfo(self, cmd):
@@ -266,8 +283,7 @@ class CommandProcessor(object):
             $ sudo yhsmpam sysinfo
             YubiHSM 0.9.8 proto 1 ID 34ff6d063052383032560343
         """
-        self._InitHSM()
-        info = self._hsm.SysInfo()
+        info = self._GetHSM().SysInfo()
         return ("YubiHSM %d.%d.%d proto %d ID %s"
                 % (info.version_major,
                    info.version_minor,
@@ -277,13 +293,14 @@ class CommandProcessor(object):
 
 
 def PAMHelper():
+    """This is the behaviour that pam_externalpass expects."""
     user = raw_input("")
     password = raw_input("")
     try:
         hsm = YHSMPAM()
         hsm.CheckPassword(user, password)
         print "OK"
-    except Error, e:
+    except Error:
         print "FAIL"
 
 
@@ -292,6 +309,7 @@ def main():
         return PAMHelper()
     else:
         CommandProcessor.Main(sys.argv)
+
 
 if __name__ == '__main__':
     sys.exit(main())
