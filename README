@@ -1,4 +1,4 @@
-YHSMPAM 0.01
+YHSMPAM
 
 Copyright 2011 Google Inc.
 
@@ -53,8 +53,6 @@ config. It's the default.
 
 4. Set password for a test user
 -------------------------------
-(this will OVERWRITE their current password, so be careful)
-
 First copy yhsmpam.py somewhere nice in your admin PATH, such as
 /usr/local/sbin/yhsmpam (without .py). It will be used by the PAM
 module, so don't put it in your home directory.
@@ -62,8 +60,10 @@ module, so don't put it in your home directory.
 $ sudo yhsmpam set testuser
 User password: secret
 
-If you don't have chpasswd or usermod then you will be instructed to
-manually put  the encrypted password is your password/shadow field.
+
+Verify that it was written:
+$ sudo cat /etc/yhsmpam/users/testuser
+071234002600 3821309218309821038213218392103213123123ee12312893182903
 
 
 5. Test the password
