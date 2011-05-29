@@ -1,0 +1,95 @@
+YHSMPAM 0.01
+
+Copyright 2011 Google Inc.
+
+YubiHSM for unix authentication.
+
+
+Installation instructions
+=========================
+
+1. Set up your YubiHSM (if you haven't already)
+-----------------------------------------------
+(this is a quick rehash of chapter 8 of the YubiHSM reference manual)
+
+Plug it in and run "minicom -D /dev/ttyACM0".
+
+If the prompt is "HSM>" then it's already set up.
+
+If the prompt is "WSAPI>" then it's in WSAPI mode. Run "hsm" and set
+it up according to the instructions in chapter 8.4 of the YubiHSM
+reference manual.
+
+If you don't get a prompt at all, then unplug it and hold down the
+configuration button while inserting it, and try again.
+
+
+2. Set up a crypto key for YHSMPAM
+----------------------------------
+Go to the YubiHSM configuration mode (unplug, hold down config button
+while re-inserting.
+
+Run "minicom -D /dev/ttyACM0". You should get a "HSM>" prompt.
+
+List your existing keys using "keylist". Either pick an existing key
+number or generate a new using "keygen 8000 1 20" (to generate key
+with handle 8000).
+
+Type "exit" to make the YubiHSM go into HSM mode.
+
+
+3. Configure YHSMPAM
+--------------------
+$ sudo mkdir /etc/yhsmpam
+$ sudo tee /etc/yhsmpam/yhsmpam.conf > /dev/null
+key_handle 8000
+device /dev/ttyACM0
+^D
+
+If your YubiHSM is /dev/ttyACM0 then you can skip that in the
+config. It's the default.
+
+
+4. Set password for a test user
+-------------------------------
+(this will OVERWRITE their current password, so be careful)
+
+First copy yhsmpam.py somewhere nice in your admin PATH, such as
+/usr/local/sbin/yhsmpam (without .py). It will be used by the PAM
+module, so don't put it in your home directory.
+
+$ sudo yhsmpam set testuser
+User password: secret
+
+If you don't have chpasswd or usermod then you will be instructed to
+manually put  the encrypted password is your password/shadow field.
+
+
+5. Test the password
+--------------------
+% sudo yhsmpam.py check testuser
+User password: secret
+Password correct
+
+
+6. Install pam_externalpass
+---------------------------
+Compile and install pam_externalpass:
+<https://github.com/ThomasHabets/pam_externalpass>
+
+  git clone https://github.com/ThomasHabets/pam_externalpass.git
+  cd pam_externalpass
+  ./configure
+  make
+  make install
+
+
+7. Configure PAM
+----------------
+Add this to /etc/pam.d/common-auth before the pam_unix line:
+  auth sufficient /usr/local/lib/libpam_externalpass.so \
+             exec=/usr/local/sbin/yhsmpam \
+             prompt=HSM_Password:_
+
+8. Try logging in as the test user
+----------------------------------
