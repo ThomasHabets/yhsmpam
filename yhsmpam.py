@@ -260,7 +260,7 @@ class CommandProcessor(object):
     #
 
     def help(self, cmd, about=None, *args):
-        """help                                 Show help text."""
+        """help [<command>]                     Show help text."""
 
         if about:
             return self._AboutCommand(about)
