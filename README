@@ -40,7 +40,8 @@ Type "exit" to make the YubiHSM go into HSM mode.
 
 3. Configure YHSMPAM
 --------------------
-$ sudo mkdir /etc/yhsmpam
+$ sudo mkdir -m 700 /etc/yhsmpam
+$ sudo mkdir -m 700 /etc/yhsmpam/users
 $ sudo tee /etc/yhsmpam/yhsmpam.conf > /dev/null
 key_handle 8000
 device /dev/ttyACM0
