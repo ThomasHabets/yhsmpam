@@ -156,18 +156,22 @@ class CommandProcessor(object):
       cmd = CommandProcessor()
       print cmd.RunCommand('help', ('set',))
       print cmd.RunCommand('set', ('thomas', 'secret'))
+
+    To add commands simply create member functions in all lower-case.
     """
     def __init__(self, configfile='/etc/yhsmpam/yhsmpam.conf'):
         super(CommandProcessor, self).__init__()
         self._argv0 = None
-        self._commands = {}
+        self._hsm = None
         self._configfile = configfile
+
+        # Config
         self._key_handle = None
         self._device = None
-        self._ReadConfig()
-        self._hsm = None
         self._datastore = None
+        self._ReadConfig()
 
+        self._commands = {}
         for cmd in [attr for attr in dir(self)
                     if attr.islower()
                     and attr.isalpha()]:
