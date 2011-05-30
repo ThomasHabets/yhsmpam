@@ -5,6 +5,13 @@ Copyright 2011 Google Inc.
 YubiHSM for unix authentication.
 
 
+Intro
+=====
+You can use YubiHSM to encrypt all your passwords using a key that's
+only stored inside the YubiHSM. There is then no way to snarf
+/etc/shadow and do offline password cracking.
+
+
 Installation instructions
 =========================
 
@@ -90,7 +97,11 @@ Compile and install pam_externalpass:
 Add this to /etc/pam.d/common-auth before the pam_unix line:
   auth sufficient /usr/local/lib/libpam_externalpass.so \
              exec=/usr/local/sbin/yhsmpam \
-             prompt=HSM_Password:_
+             prompt=HSM_Password:_ \
+             userconf=/etc/yhsmpam/users/%u
+
 
 8. Try logging in as the test user
 ----------------------------------
+Use ssh, su or whatever. If you put the line in /etc/pam.d/common-auth
+it should work for everything.
