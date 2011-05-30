@@ -50,10 +50,6 @@ class CheckError(Error):
     """Error while checking password."""
 
 
-class CheckMismatchError(CheckError):
-    """Wrong password."""
-
-
 #
 # Main classes
 #
@@ -97,30 +93,36 @@ class YHSMPAM(object):
         """GetUserDatastore(self, user) -> str
 
         Get the full path of the users datastore. Securely.
+
+        Return: full path to users datastore.
         """
         user = user.lower()
         if not user.isalnum():
             raise UseError('Username must be alphanumeric')
-        return self.datastore % {'username': user}
+        ret = self.datastore % {'username': user}
+        if ret[0] != '/':
+            raise UseError('User datastore must be absolute path')
+        return ret
 
     def CheckPassword(self, user, password):
-        """CheckPassword(self, user, password) -> None
+        """CheckPassword(self, user, password) -> bool
 
         Check password with HSM.
 
         Get user AEAD block and nonce from /etc/shadow, check that
         it's formatted properly and send to HSM.
+
+        Return: True if password is correct.
         """
         fdata = open(self.GetUserDatastore(user))
         nonce, aead = re.split(r"\s+", fdata.readline().strip(), 1)
         fdata.close()
 
-        if not self.hsm.validate_aead(nonce.decode('hex'),
+        return self.hsm.validate_aead(nonce.decode('hex'),
                                       self.key_handle,
                                       aead.decode('hex'),
                                       password.ljust(self.min_length,
-                                                     chr(0x0))):
-            raise CheckMismatchError("Wrong password according to HSM")
+                                                     chr(0x0)))
 
     def SetPassword(self, user, password):
         """SetPassword(self, user, password) -> None
@@ -187,12 +189,12 @@ class CommandProcessor(object):
         cls.argv0 = argv[0]
         cmd = CommandProcessor()
         try:
-            ret = cmd.RunCommand(argv[1], argv[2:])
-            if ret:
-                print ret
-            return 0
+            errcode, toprint = cmd.RunCommand(argv[1], argv[2:])
+            if toprint:
+                print toprint
+            return errcode
         except UseError, exc:
-            print exc
+            print >> sys.stderr, exc
             cmd.help('help')
         except Error, exc:
             print >> sys.stderr, "Exception:", type(exc)
@@ -210,7 +212,7 @@ class CommandProcessor(object):
                 self.__setattr__('_' + key, val)
 
     def RunCommand(self, cmd, args):
-        """RunCommand(self, cmd, args) -> str"""
+        """RunCommand(self, cmd, args) -> (errcode, str)"""
         return self._commands.get(cmd.lower(), self._UnknownCommand)(cmd,
                                                                      *args)
 
@@ -230,17 +232,17 @@ class CommandProcessor(object):
         raise UseError("Unknown command: %s" % cmd)
 
     def _AboutCommand(self, cmd):
-        """_AboutCommand(self, cmd): -> str
+        """_AboutCommand(self, cmd): -> (errcode, str)
 
         Show detailed help about command.
         """
         try:
-            return ' ' * 8 + self.__getattribute__(cmd.lower()).__doc__
-        except AttributeError:
-            return "Unknown command: %s" % cmd
+            return 0, ' ' * 8 + self._commands[cmd.lower].__doc__
+        except KeyError:
+            return 1, "Unknown command: %s" % cmd
 
     def _Usage(self):
-        """_Usage(self) -> str
+        """_Usage(self) -> (errcode, str)
 
         Return normal usage info.
         """
@@ -257,7 +259,7 @@ class CommandProcessor(object):
         for cmdname, cmd in sorted(self._commands.items()):
             doc = cmd.__doc__
             usagetext += '    %s\n' % (doc.split('\n')[0])
-        return usagetext
+        return 0, usagetext
 
     #
     # Commands below this
@@ -282,7 +284,7 @@ class CommandProcessor(object):
         """
         if password is None:
             password = getpass.getpass('User password: ')
-        return self._GetHSM().SetPassword(username, password)
+        return 0, self._GetHSM().SetPassword(username, password)
 
     def check(self, cmd, username, password=None):
         """check <username> [<password>]        Check user password.
@@ -293,8 +295,10 @@ class CommandProcessor(object):
         """
         if password is None:
             password = getpass.getpass('User password: ')
-        self._GetHSM().CheckPassword(username, password)
-        return "Password correct"
+        if self._GetHSM().CheckPassword(username, password):
+            return 0, "Password correct"
+        else:
+            return 1, "Password incorrect"
 
     def sysinfo(self, cmd):
         """sysinfo                              Show YubiHSM system info.
@@ -304,31 +308,31 @@ class CommandProcessor(object):
             YubiHSM 0.9.8 proto 1 ID 34ff6d063052383032560343
         """
         info = self._GetHSM().SysInfo()
-        return ("YubiHSM %d.%d.%d proto %d ID %s"
-                % (info.version_major,
-                   info.version_minor,
-                   info.version_build,
-                   info.protocol_ver,
-                   info.system_uid.encode('hex')))
+        return 0, ("YubiHSM %d.%d.%d proto %d ID %s"
+                   % (info.version_major,
+                      info.version_minor,
+                      info.version_build,
+                      info.protocol_ver,
+                      info.system_uid.encode('hex')))
 
 
 def PAMHelper():
     """This is the behaviour that pam_externalpass expects."""
     user = raw_input("")
     password = raw_input("")
-    try:
-        hsm = YHSMPAM()
-        hsm.CheckPassword(user, password)
+    hsm = YHSMPAM()
+    if hsm.CheckPassword(user, password):
         print "OK"
-    except Error:
+    else:
         print "FAIL"
+    return 0
 
 
 def main():
     if len(sys.argv) == 1:
         return PAMHelper()
     else:
-        CommandProcessor.Main(sys.argv)
+        return CommandProcessor.Main(sys.argv)
 
 
 if __name__ == '__main__':
