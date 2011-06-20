@@ -58,7 +58,8 @@ If your YubiHSM is /dev/ttyACM0 then you can skip that in the
 config. It's the default.
 
 Mode 700 on the directories may prevent pam_externalpass from seeing
-the user config files. A fix is being worked on.
+the user config files for some PAM-enabled programs such as su. A fix
+is being worked on.
 
 
 4. Set password for a test user
@@ -107,4 +108,4 @@ Add this to /etc/pam.d/common-auth before the pam_unix line:
 8. Try logging in as the test user
 ----------------------------------
 Use ssh, su or whatever. If you put the line in /etc/pam.d/common-auth
-it should work for everything.
+it should work for everything (except su, see above).
