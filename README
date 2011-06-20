@@ -34,7 +34,7 @@ configuration button while inserting it, and try again.
 2. Set up a crypto key for YHSMPAM
 ----------------------------------
 Go to the YubiHSM configuration mode (unplug, hold down config button
-while re-inserting.
+while re-inserting).
 
 Run "minicom -D /dev/ttyACM0". You should get a "HSM>" prompt.
 
@@ -57,6 +57,9 @@ device /dev/ttyACM0
 If your YubiHSM is /dev/ttyACM0 then you can skip that in the
 config. It's the default.
 
+Mode 700 on the directories may prevent pam_externalpass from seeing
+the user config files. A fix is being worked on.
+
 
 4. Set password for a test user
 -------------------------------
@@ -75,7 +78,7 @@ $ sudo cat /etc/yhsmpam/users/testuser
 
 5. Test the password
 --------------------
-% sudo yhsmpam.py check testuser
+% sudo yhsmpam check testuser
 User password: secret
 Password correct
 
